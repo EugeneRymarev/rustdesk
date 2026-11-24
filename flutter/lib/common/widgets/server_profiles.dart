@@ -225,6 +225,7 @@ class ServerProfileEditor extends StatefulWidget {
 class _ServerProfileEditorState extends State<ServerProfileEditor> {
   final model = ServerProfiles.instance;
   int? selected;
+  final nameCtrl = TextEditingController();
 
   ServerConfig get _fields => ServerConfig(
       idServer: widget.controllers[0].text,
@@ -236,7 +237,19 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
   void initState() {
     super.initState();
     final i = indexOfServerProfile(model.profiles, _fields);
-    selected = i >= 0 ? i : null;
+    _select(i >= 0 ? i : null);
+  }
+
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    super.dispose();
+  }
+
+  void _select(int? i) {
+    selected = i;
+    nameCtrl.text =
+        i != null && i < model.profiles.length ? model.profiles[i].name : '';
   }
 
   void _pick(int? i) {
@@ -246,14 +259,14 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
     widget.controllers[1].text = c.relayServer;
     widget.controllers[2].text = c.apiServer;
     widget.controllers[3].text = c.key;
-    setState(() => selected = i);
+    setState(() => _select(i));
   }
 
   Future<void> _delete() async {
     final i = selected;
     if (i == null) return;
     await model.remove(i);
-    setState(() => selected = null);
+    setState(() => _select(null));
   }
 
   void _askName() {
@@ -268,7 +281,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
         if (name.isEmpty) return;
         close();
         final saved = await model.saveAs(name, _fields);
-        if (mounted) this.setState(() => selected = saved);
+        if (mounted) this.setState(() => _select(saved));
         showToast(translate('Successful'));
       }
 
@@ -308,15 +321,29 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
             SizedBox(width: widget.labelSpacing),
           ],
           Expanded(
-            child: DropdownButton<int>(
-              isExpanded: true,
-              value: value,
-              hint: Text(
-                translate(profiles.isEmpty ? 'No saved servers' : 'Not saved'),
-                overflow: TextOverflow.ellipsis,
-              ),
-              items: _profileItems(profiles),
-              onChanged: profiles.isEmpty ? null : _pick,
+            // DropdownButton opens its menu on the navigator, which sits
+            // below this dialog's overlay; DropdownMenu opens in this overlay.
+            child: DropdownMenu<int>(
+              key: ValueKey(profiles.length),
+              controller: nameCtrl,
+              initialSelection: value,
+              expandedInsets: EdgeInsets.zero,
+              enabled: profiles.isNotEmpty,
+              enableFilter: false,
+              enableSearch: false,
+              requestFocusOnTap: false,
+              hintText: translate(
+                  profiles.isEmpty ? 'No saved servers' : 'Not saved'),
+              inputDecorationTheme: Theme.of(context)
+                  .inputDecorationTheme
+                  .copyWith(
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 8, vertical: 12)),
+              dropdownMenuEntries: [
+                for (var i = 0; i < profiles.length; i++)
+                  DropdownMenuEntry<int>(value: i, label: profiles[i].name),
+              ],
+              onSelected: _pick,
             ),
           ),
           IconButton(
