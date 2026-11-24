@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
+import 'package:flutter_hbb/common/widgets/server_profiles.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/common/widgets/keyboard_shortcuts/page_body.dart';
@@ -1930,6 +1931,17 @@ class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
                   icon: Icons.dns_outlined,
                   title: 'ID/Relay Server',
                   onTap: () => showServerSettings(gFFI.dialogManager, setState),
+                ),
+              if (!hideServer && !ServerProfiles.hidden) divider,
+              if (!hideServer && !ServerProfiles.hidden)
+                listTile(
+                  icon: Icons.swap_horiz,
+                  title: 'Saved servers',
+                  trailing: SizedBox(
+                    width: 320,
+                    child: ServerProfileSelector(
+                        enabled: !locked, showManageButtons: true),
+                  ),
                 ),
               if (!hideProxy && !hideServer) divider,
               if (!hideProxy)
