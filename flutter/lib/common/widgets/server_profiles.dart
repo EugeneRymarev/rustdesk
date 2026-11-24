@@ -95,21 +95,21 @@ class ServerProfiles {
         key: kLocalOptionServerProfiles, value: encodeServerProfiles(profiles));
   }
 
-  Future<void> saveCurrentAs(String name) async {
-    await refresh();
-    final c = current.value;
+  Future<int> saveAs(String name, ServerConfig c) async {
     final copy = ServerConfig(
         idServer: c.idServer,
         relayServer: c.relayServer,
         apiServer: c.apiServer,
         key: c.key);
-    final i = profiles.indexWhere((p) => p.name == name);
+    var i = profiles.indexWhere((p) => p.name == name);
     if (i >= 0) {
       profiles[i] = ServerProfile(name, copy);
     } else {
       profiles.add(ServerProfile(name, copy));
+      i = profiles.length - 1;
     }
     await _save();
+    return i;
   }
 
   Future<void> remove(int index) async {
@@ -139,14 +139,27 @@ class ServerProfiles {
   }
 }
 
-/// Dropdown of saved servers; choosing one switches to it at once.
-class ServerProfileSelector extends StatefulWidget {
-  final bool enabled;
-  final bool showManageButtons;
+String _describeServer(ServerConfig c) => [
+      '${translate('ID Server')}: ${c.idServer.isEmpty ? '-' : c.idServer}',
+      '${translate('Relay Server')}: ${c.relayServer.isEmpty ? '-' : c.relayServer}',
+      '${translate('API Server')}: ${c.apiServer.isEmpty ? '-' : c.apiServer}',
+    ].join('\n');
 
-  const ServerProfileSelector(
-      {Key? key, this.enabled = true, this.showManageButtons = false})
-      : super(key: key);
+List<DropdownMenuItem<int>> _profileItems(List<ServerProfile> profiles) => [
+      for (var i = 0; i < profiles.length; i++)
+        DropdownMenuItem<int>(
+          value: i,
+          child: Tooltip(
+            message: _describeServer(profiles[i].config),
+            waitDuration: const Duration(milliseconds: 800),
+            child: Text(profiles[i].name, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+    ];
+
+/// Main window dropdown: choosing a saved server switches to it at once.
+class ServerProfileSelector extends StatefulWidget {
+  const ServerProfileSelector({Key? key}) : super(key: key);
 
   @override
   State<ServerProfileSelector> createState() => _ServerProfileSelectorState();
@@ -173,77 +186,94 @@ class _ServerProfileSelectorState extends State<ServerProfileSelector> {
       final profiles = model.profiles.toList();
       model.current.value;
       final index = model.currentIndex;
-      final enabled = widget.enabled && !model.switching.value;
-      final dropdown = DropdownButton<int>(
+      return DropdownButton<int>(
         isExpanded: true,
         isDense: true,
         underline: const SizedBox.shrink(),
         value: index >= 0 ? index : null,
-        hint: Text(
-          translate(profiles.isEmpty ? 'No saved servers' : 'Not saved'),
-          overflow: TextOverflow.ellipsis,
-        ),
-        items: [
-          for (var i = 0; i < profiles.length; i++)
-            DropdownMenuItem<int>(
-              value: i,
-              child: Tooltip(
-                message: _describe(profiles[i].config),
-                waitDuration: const Duration(milliseconds: 800),
-                child: Text(profiles[i].name, overflow: TextOverflow.ellipsis),
-              ),
-            ),
-        ],
-        onChanged: enabled && profiles.isNotEmpty
+        hint: Text(translate('Not saved'), overflow: TextOverflow.ellipsis),
+        items: _profileItems(profiles),
+        onChanged: !model.switching.value && profiles.isNotEmpty
             ? (i) {
                 if (i != null && i != index) model.apply(i);
               }
             : null,
       );
-      if (!widget.showManageButtons) return dropdown;
-      return Row(
-        children: [
-          Expanded(child: dropdown),
-          IconButton(
-            tooltip: translate('Save current server'),
-            icon: const Icon(Icons.add),
-            onPressed: enabled ? () => _askName(context, index) : null,
-          ),
-          IconButton(
-            tooltip: translate('Delete'),
-            icon: const Icon(Icons.delete_outline),
-            onPressed: enabled && index >= 0 ? () => model.remove(index) : null,
-          ),
-        ],
-      );
     });
   }
+}
 
-  static String _describe(ServerConfig c) {
-    final lines = <String>[
-      '${translate('ID Server')}: ${c.idServer.isEmpty ? '-' : c.idServer}',
-      '${translate('Relay Server')}: ${c.relayServer.isEmpty ? '-' : c.relayServer}',
-      '${translate('API Server')}: ${c.apiServer.isEmpty ? '-' : c.apiServer}',
-    ];
-    return lines.join('\n');
+/// Row for the ID/Relay Server dialog: pick a saved server to fill the
+/// fields, save the fields under a name, or delete the picked one.
+/// [controllers] are the dialog's id, relay, api and key fields.
+class ServerProfileEditor extends StatefulWidget {
+  final List<TextEditingController> controllers;
+  final double? labelWidth;
+  final double labelSpacing;
+
+  const ServerProfileEditor(
+      {Key? key,
+      required this.controllers,
+      this.labelWidth,
+      this.labelSpacing = 8})
+      : super(key: key);
+
+  @override
+  State<ServerProfileEditor> createState() => _ServerProfileEditorState();
+}
+
+class _ServerProfileEditorState extends State<ServerProfileEditor> {
+  final model = ServerProfiles.instance;
+  int? selected;
+
+  ServerConfig get _fields => ServerConfig(
+      idServer: widget.controllers[0].text,
+      relayServer: widget.controllers[1].text,
+      apiServer: widget.controllers[2].text,
+      key: widget.controllers[3].text);
+
+  @override
+  void initState() {
+    super.initState();
+    final i = indexOfServerProfile(model.profiles, _fields);
+    selected = i >= 0 ? i : null;
   }
 
-  void _askName(BuildContext context, int index) {
+  void _pick(int? i) {
+    if (i == null || i >= model.profiles.length) return;
+    final c = model.profiles[i].config;
+    widget.controllers[0].text = c.idServer;
+    widget.controllers[1].text = c.relayServer;
+    widget.controllers[2].text = c.apiServer;
+    widget.controllers[3].text = c.key;
+    setState(() => selected = i);
+  }
+
+  Future<void> _delete() async {
+    final i = selected;
+    if (i == null) return;
+    await model.remove(i);
+    setState(() => selected = null);
+  }
+
+  void _askName() {
+    final i = selected;
     final ctrl = TextEditingController(
-        text: index >= 0
-            ? model.profiles[index].name
-            : model.current.value.idServer);
+        text: i != null && i < model.profiles.length
+            ? model.profiles[i].name
+            : widget.controllers[0].text.trim());
     gFFI.dialogManager.show((setState, close, context) {
       submit() async {
         final name = ctrl.text.trim();
         if (name.isEmpty) return;
         close();
-        await model.saveCurrentAs(name);
+        final saved = await model.saveAs(name, _fields);
+        if (mounted) this.setState(() => selected = saved);
         showToast(translate('Successful'));
       }
 
       return CustomAlertDialog(
-        title: Text(translate('Save current server')),
+        title: Text(translate('Save server')),
         content: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 400),
           child: TextField(
@@ -259,6 +289,47 @@ class _ServerProfileSelectorState extends State<ServerProfileSelector> {
         ],
         onSubmit: submit,
         onCancel: close,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final profiles = model.profiles.toList();
+      final value =
+          selected != null && selected! < profiles.length ? selected : null;
+      return Row(
+        children: [
+          if (widget.labelWidth != null) ...[
+            SizedBox(
+                width: widget.labelWidth,
+                child: Text(translate('Saved servers'))),
+            SizedBox(width: widget.labelSpacing),
+          ],
+          Expanded(
+            child: DropdownButton<int>(
+              isExpanded: true,
+              value: value,
+              hint: Text(
+                translate(profiles.isEmpty ? 'No saved servers' : 'Not saved'),
+                overflow: TextOverflow.ellipsis,
+              ),
+              items: _profileItems(profiles),
+              onChanged: profiles.isEmpty ? null : _pick,
+            ),
+          ),
+          IconButton(
+            tooltip: translate('Save server'),
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _askName,
+          ),
+          IconButton(
+            tooltip: translate('Delete'),
+            icon: const Icon(Icons.delete_outline),
+            onPressed: value == null ? null : _delete,
+          ),
+        ],
       );
     });
   }

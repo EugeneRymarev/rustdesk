@@ -833,6 +833,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Saved servers", ""),
         ("No saved servers", ""),
         ("Not saved", ""),
-        ("Save current server", ""),
+        ("Save server", ""),
     ].iter().cloned().collect();
 }
