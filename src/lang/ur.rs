@@ -831,7 +831,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("wayland-drm-tip", "Wayland پر بغیر نگرانی رسائی کے لیے DRM اسکرین کیپچر آزمائیں، کام نہ کرے تو X11 استعمال کریں۔"),
         ("login-wayland-drm-tip", "Wayland لاگ ان اسکرین تک رسائی کے لیے DRM اسکرین کیپچر آزمائیں یا اسے X11 پر منتقل کریں۔"),
         ("Saved servers", ""),
-        ("No saved servers", ""),
+        ("Public server", ""),
         ("Not saved", ""),
         ("Save server", ""),
     ].iter().cloned().collect();

@@ -64,6 +64,19 @@ String encodeServerProfiles(List<ServerProfile> profiles) =>
 int indexOfServerProfile(List<ServerProfile> profiles, ServerConfig current) =>
     profiles.indexWhere((p) => p.sameServer(current));
 
+/// Index used for the built-in public server, which has all fields empty.
+const int kPublicServerIndex = -1;
+
+bool _isPublicServer(ServerConfig c) =>
+    ServerProfile('', ServerConfig()).sameServer(c);
+
+/// The saved server matching [current], [kPublicServerIndex], or null.
+int? selectedServerIndex(List<ServerProfile> profiles, ServerConfig current) {
+  final i = indexOfServerProfile(profiles, current);
+  if (i >= 0) return i;
+  return _isPublicServer(current) ? kPublicServerIndex : null;
+}
+
 class ServerProfiles {
   static final ServerProfiles instance = ServerProfiles._();
   ServerProfiles._() {
@@ -89,7 +102,10 @@ class ServerProfiles {
     }
   }
 
-  int get currentIndex => indexOfServerProfile(profiles, current.value);
+  int? get currentIndex => selectedServerIndex(profiles, current.value);
+
+  ServerConfig configAt(int index) =>
+      index == kPublicServerIndex ? ServerConfig() : profiles[index].config;
 
   Future<void> _save() async {
     await bind.mainSetLocalOption(
@@ -120,8 +136,10 @@ class ServerProfiles {
   }
 
   Future<void> apply(int index) async {
-    if (index < 0 || index >= profiles.length || switching.value) return;
-    final c = profiles[index].config;
+    if (index < kPublicServerIndex ||
+        index >= profiles.length ||
+        switching.value) return;
+    final c = configAt(index);
     switching.value = true;
     final errMsgs = [''.obs, ''.obs, ''.obs];
     try {
@@ -150,6 +168,11 @@ String _describeServer(ServerConfig c) => [
     ].join('\n');
 
 List<DropdownMenuItem<int>> _profileItems(List<ServerProfile> profiles) => [
+      DropdownMenuItem<int>(
+        value: kPublicServerIndex,
+        child:
+            Text(translate('Public server'), overflow: TextOverflow.ellipsis),
+      ),
       for (var i = 0; i < profiles.length; i++)
         DropdownMenuItem<int>(
           value: i,
@@ -192,10 +215,10 @@ class _ServerProfileSelectorState extends State<ServerProfileSelector> {
         underline: const SizedBox.shrink(),
         style: widget.style,
         iconEnabledColor: const Color(0xFFDDDDDD),
-        value: index >= 0 ? index : null,
+        value: index,
         hint: Text(translate('Not saved'), overflow: TextOverflow.ellipsis),
         items: _profileItems(profiles),
-        onChanged: !model.switching.value && profiles.isNotEmpty
+        onChanged: !model.switching.value
             ? (i) {
                 if (i != null && i != index) model.apply(i);
               }
@@ -238,8 +261,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
   @override
   void initState() {
     super.initState();
-    final i = indexOfServerProfile(model.profiles, _fields);
-    _select(i >= 0 ? i : null);
+    _select(selectedServerIndex(model.profiles, _fields));
   }
 
   @override
@@ -250,13 +272,16 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
 
   void _select(int? i) {
     selected = i;
-    nameCtrl.text =
-        i != null && i < model.profiles.length ? model.profiles[i].name : '';
+    nameCtrl.text = i == kPublicServerIndex
+        ? translate('Public server')
+        : i != null && i < model.profiles.length
+            ? model.profiles[i].name
+            : '';
   }
 
   void _pick(int? i) {
     if (i == null || i >= model.profiles.length) return;
-    final c = model.profiles[i].config;
+    final c = model.configAt(i);
     widget.controllers[0].text = c.idServer;
     widget.controllers[1].text = c.relayServer;
     widget.controllers[2].text = c.apiServer;
@@ -266,7 +291,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
 
   Future<void> _delete() async {
     final i = selected;
-    if (i == null) return;
+    if (i == null || i < 0) return;
     await model.remove(i);
     setState(() => _select(null));
   }
@@ -274,7 +299,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
   void _askName() {
     final i = selected;
     final ctrl = TextEditingController(
-        text: i != null && i < model.profiles.length
+        text: i != null && i >= 0 && i < model.profiles.length
             ? model.profiles[i].name
             : widget.controllers[0].text.trim());
     gFFI.dialogManager.show((setState, close, context) {
@@ -314,6 +339,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
       final profiles = model.profiles.toList();
       final value =
           selected != null && selected! < profiles.length ? selected : null;
+      final canDelete = value != null && value >= 0;
       return Row(
         children: [
           if (widget.labelWidth != null) ...[
@@ -330,18 +356,19 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
               controller: nameCtrl,
               initialSelection: value,
               expandedInsets: EdgeInsets.zero,
-              enabled: profiles.isNotEmpty,
               enableFilter: false,
               enableSearch: false,
               requestFocusOnTap: false,
-              hintText: translate(
-                  profiles.isEmpty ? 'No saved servers' : 'Not saved'),
+              hintText: translate('Not saved'),
               inputDecorationTheme: Theme.of(context)
                   .inputDecorationTheme
                   .copyWith(
                       contentPadding:
                           EdgeInsets.symmetric(horizontal: 8, vertical: 12)),
               dropdownMenuEntries: [
+                DropdownMenuEntry<int>(
+                    value: kPublicServerIndex,
+                    label: translate('Public server')),
                 for (var i = 0; i < profiles.length; i++)
                   DropdownMenuEntry<int>(value: i, label: profiles[i].name),
               ],
@@ -356,7 +383,7 @@ class _ServerProfileEditorState extends State<ServerProfileEditor> {
           IconButton(
             tooltip: translate('Delete'),
             icon: const Icon(Icons.delete_outline),
-            onPressed: value == null ? null : _delete,
+            onPressed: canDelete ? _delete : null,
           ),
         ],
       );

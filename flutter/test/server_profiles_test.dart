@@ -31,4 +31,11 @@ void main() {
         1);
     expect(indexOfServerProfile(profiles, ServerConfig(idServer: 'c')), -1);
   });
+
+  test('empty server settings select the public server', () {
+    final profiles = [ServerProfile('A', ServerConfig(idServer: 'a'))];
+    expect(selectedServerIndex(profiles, ServerConfig()), kPublicServerIndex);
+    expect(selectedServerIndex(profiles, ServerConfig(idServer: 'a')), 0);
+    expect(selectedServerIndex(profiles, ServerConfig(idServer: 'c')), isNull);
+  });
 }
