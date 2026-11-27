@@ -7,6 +7,7 @@ import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 
 const String kLocalOptionServerProfiles = 'server-profiles';
+const String kLocalOptionServerAccounts = 'server-accounts';
 
 class ServerProfile {
   String name;
@@ -99,6 +100,40 @@ class ServerProfiles {
           ServerConfig.fromOptions(jsonDecode(await bind.mainGetOptions()));
     } catch (e) {
       debugPrint('Failed to read server options: $e');
+    }
+  }
+
+  /// Keeps the account of [oldApiServer] aside instead of logging it out,
+  /// and brings back the account saved earlier for [newApiServer], if any.
+  Future<void> switchAccount(String oldApiServer, String newApiServer) async {
+    if (oldApiServer == newApiServer) return;
+    final userModel = gFFI.userModel;
+    Map<String, dynamic> accounts = {};
+    final text = bind.mainGetLocalOption(key: kLocalOptionServerAccounts);
+    if (text.isNotEmpty) {
+      try {
+        accounts = Map<String, dynamic>.from(jsonDecode(text));
+      } catch (e) {
+        debugPrint('Invalid server accounts: $e');
+      }
+    }
+    final token = bind.mainGetLocalOption(key: 'access_token');
+    if (oldApiServer.isNotEmpty && token.isNotEmpty) {
+      accounts[oldApiServer] = {
+        'access_token': token,
+        'user_info': bind.mainGetLocalOption(key: 'user_info'),
+      };
+    }
+    await userModel.reset(resetOther: true);
+    final saved = accounts.remove(newApiServer);
+    await bind.mainSetLocalOption(
+        key: kLocalOptionServerAccounts, value: jsonEncode(accounts));
+    if (saved is Map) {
+      await bind.mainSetLocalOption(
+          key: 'access_token', value: (saved['access_token'] ?? '').toString());
+      await bind.mainSetLocalOption(
+          key: 'user_info', value: (saved['user_info'] ?? '').toString());
+      userModel.refreshCurrentUser();
     }
   }
 

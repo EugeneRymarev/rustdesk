@@ -3675,11 +3675,7 @@ Future<bool> setServerConfig(
   await bind.mainSetOption(key: 'api-server', value: config.apiServer);
   await bind.mainSetOption(key: 'key', value: config.key);
   final newApiServer = await bind.mainGetApiServer();
-  if (oldApiServer.isNotEmpty &&
-      oldApiServer != newApiServer &&
-      gFFI.userModel.isLogin) {
-    gFFI.userModel.logOut(apiServer: oldApiServer);
-  }
+  await ServerProfiles.instance.switchAccount(oldApiServer, newApiServer);
   ServerProfiles.instance.refresh();
   return true;
 }
